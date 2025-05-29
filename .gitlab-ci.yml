@@ -1,14 +1,26 @@
+########################
+# Global vars (edit as required)
+########################
 variables:
   TF_VER: "1.8.5"
   TF_WORKDIR: "."
+  AWS_DEFAULT_REGION: "eu-west-3"          # parent region (Paris)
+  IMAGE_TAG: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
 
-stages: [fmt, plan, build, deploy]
+stages:
+  - fmt
+  - plan
+  - apply         # create infra
+  - build         # build + push image
+  - deploy        # run on WLZ EC2
 
+############################
+# Shared Terraform template
+############################
 .default_tf:
   image:
     name: hashicorp/terraform:${TF_VER}
-    # Empty entrypoint → run a normal shell instead of `/bin/terraform`
-    entrypoint: [""]
+    entrypoint: [""]                       # run a normal shell
   before_script:
     - terraform -chdir=${TF_WORKDIR} init \
         -input=false \
@@ -29,43 +41,70 @@ plan:
     - terraform plan -out=tfplan
   artifacts:
     paths: [tfplan]
-    expire_in: 1 week
+    expire_in: 7 days
 
 apply:
   extends: .default_tf
-  stage: deploy      # Terraform deploy
-  script: terraform apply -auto-approve tfplan
+  stage: apply
+  script: |
+    terraform apply -auto-approve tfplan
+    # export TF outputs → env file for later stages
+    terraform output -json > tf_outputs.json
+    jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' \
+        tf_outputs.json > tf.env
+  artifacts:
+    reports:
+      dotenv: tf.env                       # makes TFOUT_* vars available
   dependencies: [plan]
-  when: manual
+  when: manual                            # click once on first run
 
+############################
+# Build & push to GitLab registry
+############################
 docker_build:
-  stage: build       # Docker image build → ECR
-  image: docker:latest
-  services: [docker:dind]
+  stage: build
+  needs: [apply]                          # wait for infra & outputs
+  image: docker:25.0.3
+  services: [docker:25.0.3-dind]
   variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
     DOCKER_BUILDKIT: "1"
   before_script:
-    - apk add --no-cache python3 py3-pip jq
-    - pip install --no-cache-dir awscli==2.*
-    - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
-      docker login --username AWS --password-stdin $(echo $ECR_REPO_URI | cut -d/ -f1)
+    - echo "$CI_REGISTRY_PASSWORD" | \
+        docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
-    - docker build -t $ECR_REPO_URI:$CI_COMMIT_SHORT_SHA ./docker
-    - docker push $ECR_REPO_URI:$CI_COMMIT_SHORT_SHA
-  only: [main]
+    - docker build -t $IMAGE_TAG ./docker
+    - docker push $IMAGE_TAG
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
 
+############################
+# Pull & run on WLZ EC2
+############################
 ssh_deploy:
-  stage: deploy      # Pull latest image on the WLZ EC2
+  stage: deploy
+  needs:
+    - job: docker_build
+      artifacts: false
   image: alpine:latest
   before_script:
-    - apk add --no-cache openssh sshpass
-    - echo "$SSH_KEY" > id_rsa && chmod 600 id_rsa
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H "$TFOUT_WLZ_IP" >> ~/.ssh/known_hosts
   script: |
     set -e
-    LATEST_TAG="$CI_COMMIT_SHORT_SHA"
-    ssh -o StrictHostKeyChecking=no -i id_rsa ec2-user@$WLZ_IP "
-      docker pull $ECR_REPO_URI:$LATEST_TAG &&
-      (docker stop \$(docker ps -q) || true) &&
-      docker run -d --restart unless-stopped -p 80:3000 $ECR_REPO_URI:$LATEST_TAG"
-  needs: [docker_build]
-  only: [main]
+    ssh -i ~/.ssh/id_rsa ec2-user@$TFOUT_WLZ_IP <<EOF
+      docker stop \$(docker ps -q) || true
+      docker pull $IMAGE_TAG
+      docker run -d --restart unless-stopped -p 80:3000 $IMAGE_TAG
+EOF
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+  when: manual                            # click to deploy
+
+# Uncomment if your runner has a custom tag
+# default:
+#   tags: [wlz]
