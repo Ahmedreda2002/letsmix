@@ -10,24 +10,23 @@ stages:
 
 variables:
   TF_VER: "1.8.5"
-  TF_WORKDIR: "."          # root folder with *.tf
+  TF_WORKDIR: "."
   AWS_REGION: "eu-west-3"
 
 ############################
 # Shared template for TF jobs
 ############################
 .default_tf:
-  image: hashicorp/terraform:${TF_VER}
-  entrypoint: [""]              # ← key fix: run a normal shell
+  image: "hashicorp/terraform:$TF_VER"
+  entrypoint: [""]          # run a normal shell
   before_script:
-    # Show version and init backend
     - terraform --version
-    - |
-      terraform -chdir=${TF_WORKDIR} init \
-        -input=false \
-        -backend-config="bucket=${TF_STATE_BUCKET}" \
-        -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
-        -backend-config="region=${AWS_REGION}"
+    - >
+      terraform -chdir=$TF_WORKDIR init
+      -input=false
+      -backend-config="bucket=$TF_STATE_BUCKET"
+      -backend-config="dynamodb_table=$TF_STATE_DDB_TABLE"
+      -backend-config="region=$AWS_REGION"
 
 ############################
 # 1. Format / lint
@@ -36,7 +35,7 @@ fmt:
   extends: .default_tf
   stage: fmt
   script:
-    - terraform -chdir=${TF_WORKDIR} fmt -check -recursive
+    - terraform -chdir=$TF_WORKDIR fmt -check -recursive
 
 ############################
 # 2. Plan
@@ -45,10 +44,11 @@ plan:
   extends: .default_tf
   stage: plan
   script:
-    - terraform -chdir=${TF_WORKDIR} validate
-    - terraform -chdir=${TF_WORKDIR} plan -out=tfplan -input=false
+    - terraform -chdir=$TF_WORKDIR validate
+    - terraform -chdir=$TF_WORKDIR plan -out=tfplan -input=false
   artifacts:
-    paths: [ "${TF_WORKDIR}/tfplan" ]
+    paths:
+      - "$TF_WORKDIR/tfplan"
     expire_in: 1 week
 
 ############################
@@ -57,31 +57,34 @@ plan:
 apply:
   extends: .default_tf
   stage: apply
+  needs: [plan]
   script:
-    - terraform -chdir=${TF_WORKDIR} apply -auto-approve tfplan
-  dependencies: [ plan ]
+    - terraform -chdir=$TF_WORKDIR apply -auto-approve tfplan
   when: manual
   only:
     - main
   environment:
     name: dev
+
 ############################
 # 4. Build Docker image
 ############################
 docker_build:
   stage: build
   image: docker:25.0
-  services: [ docker:dind ]
+  services:
+    - docker:dind
   variables:
     DOCKER_DRIVER: overlay2
   before_script:
     - apk add --no-cache python3 py3-pip
     - pip install awscli
-    - aws ecr get-login-password --region ${AWS_REGION} | \
-      docker login --username AWS --password-stdin $(echo ${ECR_REPO_URI} | cut -d/ -f1)
+    - |
+      aws ecr get-login-password --region $AWS_REGION |
+      docker login --username AWS --password-stdin $(echo $ECR_REPO_URI | cut -d/ -f1)
   script:
-    - docker build -t ${ECR_REPO_URI}:${CI_COMMIT_SHORT_SHA} ./docker
-    - docker push ${ECR_REPO_URI}:${CI_COMMIT_SHORT_SHA}
+    - docker build -t $ECR_REPO_URI:$CI_COMMIT_SHORT_SHA ./docker
+    - docker push $ECR_REPO_URI:$CI_COMMIT_SHORT_SHA
   only:
     - main
 
@@ -91,32 +94,31 @@ docker_build:
 ssh_deploy:
   stage: deploy
   image: alpine:3.20
-  needs: [ docker_build ]
+  needs: [docker_build]
   before_script:
     - apk add --no-cache openssh aws-cli
-    # prepare SSH key
     - mkdir -p ~/.ssh
     - echo "$SSH_KEY" > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
     # resolve WLZ instance carrier IP from tag
-    - WLZ_IP=$(aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=wlz-app-dev-fe" \
-        --query 'Reservations[0].Instances[0].PrivateIpAddress' \
-        --output text)
-  script: |
-    TAG=${CI_COMMIT_SHORT_SHA}
-    ssh -o StrictHostKeyChecking=no ec2-user@${WLZ_IP} <<'SSH'
-      set -e
-      sudo docker login -u AWS -p $(aws ecr get-login-password --region ${AWS_REGION})
-      sudo docker pull ${ECR_REPO_URI}:${TAG}
-
-      # stop any old container if running
-      CID=$(sudo docker ps -q)
-      [ -n "$CID" ] && sudo docker stop "$CID"
-
-      # run new image on port 80
-      sudo docker run -d --rm -p 80:3000 ${ECR_REPO_URI}:${TAG}
-SSH                   # ← exactly flush-left, no indent
-when: manual
-only:
-  - main
+    - >
+      WLZ_IP=$(aws ec2 describe-instances
+      --filters "Name=tag:Name,Values=wlz-app-dev-fe"
+      --query 'Reservations[0].Instances[0].PrivateIpAddress'
+      --output text)
+      echo "WLZ_IP=$WLZ_IP" >> variables.env
+  script:
+    - |
+      source variables.env
+      TAG=$CI_COMMIT_SHORT_SHA
+      ssh -o StrictHostKeyChecking=no ec2-user@$WLZ_IP "
+        set -e
+        sudo docker login -u AWS -p \$(aws ecr get-login-password --region $AWS_REGION)
+        sudo docker pull $ECR_REPO_URI:$TAG
+        CID=\$(sudo docker ps -q)
+        [ -n \"\$CID\" ] && sudo docker stop \"\$CID\"
+        sudo docker run -d --rm -p 80:3000 $ECR_REPO_URI:$TAG
+      "
+  when: manual
+  only:
+    - main
