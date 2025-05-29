@@ -5,13 +5,16 @@ variables:
 stages: [fmt, plan, build, deploy]
 
 .default_tf:
-  image: hashicorp/terraform:${TF_VER}
-  entrypoint: [""]
+  image:
+    name: hashicorp/terraform:${TF_VER}
+    # Empty entrypoint → run a normal shell instead of `/bin/terraform`
+    entrypoint: [""]
   before_script:
     - terraform -chdir=${TF_WORKDIR} init \
+        -input=false \
         -backend-config="bucket=${TF_STATE_BUCKET}" \
         -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
-        -input=false
+        -backend-config="region=${AWS_DEFAULT_REGION}"
 
 fmt:
   extends: .default_tf
