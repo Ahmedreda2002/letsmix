@@ -1,58 +1,68 @@
-image: hashicorp/terraform:1.8.5
-
 variables:
-  TF_WORKDIR: "."                               # where the *.tf live
-  TF_STATE_BUCKET: "wlz-tf-state-portfolio-20250512"
-  TF_STATE_DDB_TABLE: "tf-locks"
-  AWS_DEFAULT_REGION: "eu-west-3"
+  TF_VER: "1.8.5"
+  TF_WORKDIR: "."
 
-stages: [validate, plan, apply]
+stages: [fmt, plan, build, deploy]
 
-before_script:
-  # write back-end config on the fly & init
-  - |
-    cat > $TF_WORKDIR/backend.tf <<EOF
-    terraform {
-      backend "s3" {
-        bucket         = "${TF_STATE_BUCKET}"
-        key            = "global/terraform.tfstate"
-        region         = "${AWS_DEFAULT_REGION}"
-        dynamodb_table = "${TF_STATE_DDB_TABLE}"
-        encrypt        = true
-      }
-    }
-    EOF
-  - cd $TF_WORKDIR
-  - terraform init -input=false -upgrade
+.default_tf:
+  image: hashicorp/terraform:${TF_VER}
+  entrypoint: [""]
+  before_script:
+    - terraform -chdir=${TF_WORKDIR} init \
+        -backend-config="bucket=${TF_STATE_BUCKET}" \
+        -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
+        -input=false
 
-validate:
-  stage: validate
-  script:
-    - terraform fmt -check -recursive
-    - terraform validate
-  only:
-    - merge_requests
-    - main
+fmt:
+  extends: .default_tf
+  stage: fmt
+  script: terraform fmt -check -recursive
 
 plan:
+  extends: .default_tf
   stage: plan
   script:
-    - terraform plan -input=false -out=tfplan
+    - terraform validate
+    - terraform plan -out=tfplan
   artifacts:
-    paths: [ $TF_WORKDIR/tfplan ]
-    expire_in: 1 hour
-  only:
-    - main
+    paths: [tfplan]
+    expire_in: 1 week
 
 apply:
-  stage: apply
+  extends: .default_tf
+  stage: deploy      # Terraform deploy
+  script: terraform apply -auto-approve tfplan
+  dependencies: [plan]
+  when: manual
+
+docker_build:
+  stage: build       # Docker image build → ECR
+  image: docker:latest
+  services: [docker:dind]
+  variables:
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - apk add --no-cache python3 py3-pip jq
+    - pip install --no-cache-dir awscli==2.*
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
+      docker login --username AWS --password-stdin $(echo $ECR_REPO_URI | cut -d/ -f1)
   script:
-    - terraform apply -input=false -auto-approve tfplan
-  needs:
-    - job: plan
-      artifacts: true
-  when: manual              # click “Play” to deploy
-  only:
-    - main
-  environment:
-    name: dev
+    - docker build -t $ECR_REPO_URI:$CI_COMMIT_SHORT_SHA ./docker
+    - docker push $ECR_REPO_URI:$CI_COMMIT_SHORT_SHA
+  only: [main]
+
+ssh_deploy:
+  stage: deploy      # Pull latest image on the WLZ EC2
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh sshpass
+    - echo "$SSH_KEY" > id_rsa && chmod 600 id_rsa
+  script: |
+    set -e
+    LATEST_TAG="$CI_COMMIT_SHORT_SHA"
+    ssh -o StrictHostKeyChecking=no -i id_rsa ec2-user@$WLZ_IP "
+      docker pull $ECR_REPO_URI:$LATEST_TAG &&
+      (docker stop \$(docker ps -q) || true) &&
+      docker run -d --restart unless-stopped -p 80:3000 $ECR_REPO_URI:$LATEST_TAG"
+  needs: [docker_build]
+  only: [main]
