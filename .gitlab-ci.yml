@@ -1,124 +1,73 @@
-########################
-# Global configuration #
-########################
-stages:
-  - fmt
-  - plan
-  - apply        # terraform apply (manual)
-  - build        # build Docker image
-  - deploy       # pull image on EC2 (manual)
+# ------------- CI VARIABLES (set them in Settings ▸ CI/CD ▸ Variables) -------
+#  AWS_ACCESS_KEY_ID         → IAM user / role with S3+Dynamo permissions
+#  AWS_SECRET_ACCESS_KEY
+#  AWS_DEFAULT_REGION        → eu-west-3         (or your control-plane region)
+#  TF_STATE_BUCKET           → wlz-tf-state-portfolio-20250512  (example)
+#  TF_STATE_DDB_TABLE        → tf-locks
 
 variables:
-  TF_VER: "1.8.5"
-  TF_WORKDIR: "."
-  AWS_REGION: "eu-west-3"
+  TF_WORKDIR: "."            # folder containing *.tf files
+  TF_IMAGE: "hashicorp/terraform:1.8.5"
 
-############################
-# Shared template for TF jobs
-############################
+stages:
+  - validate
+  - plan
+  - apply
+
 .default_tf:
-  image: hashicorp/terraform:${TF_VER}
-  entrypoint: [""]                     # <— run shell, not terraform
+  image: $TF_IMAGE
   before_script:
-    - terraform --version
+    # configure remote backend dynamically
     - |
-      terraform -chdir=${TF_WORKDIR} init \
-        -input=false \
-        -backend-config="bucket=${TF_STATE_BUCKET}" \
-        -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
-        -backend-config="region=${AWS_REGION}"
+      cat > "$TF_WORKDIR/backend.tf" <<EOF
+      terraform {
+        backend "s3" {
+          bucket         = "${TF_STATE_BUCKET}"
+          key            = "global/terraform.tfstate"
+          region         = "${AWS_DEFAULT_REGION}"
+          dynamodb_table = "${TF_STATE_DDB_TABLE}"
+          encrypt        = true
+        }
+      }
+      EOF
+    - cd "$TF_WORKDIR"
+    - terraform init -input=false -upgrade
+  tags: [terraform]
 
-################
-# 1. Formatting
-################
-fmt:
+validate:
   extends: .default_tf
-  stage: fmt
+  stage: validate
   script:
-    - terraform -chdir=${TF_WORKDIR} fmt -check -recursive
+    - terraform fmt -check -recursive
+    - terraform validate
+  only:
+    - merge_requests
+    - main
 
-###########
-# 2. Plan
-###########
 plan:
   extends: .default_tf
   stage: plan
   script:
-    - terraform -chdir=${TF_WORKDIR} validate
-    - terraform -chdir=${TF_WORKDIR} plan -out=tfplan -input=false
+    - terraform plan -input=false -out=tfplan
   artifacts:
-    paths: [ "${TF_WORKDIR}/tfplan" ]
-    expire_in: 1 week
+    name: tfplan
+    paths:
+      - $TF_WORKDIR/tfplan
+    expire_in: 1 hour
+  needs: []
+  only:
+    - main
 
-############
-# 3. Apply
-############
 apply:
   extends: .default_tf
   stage: apply
   script:
-    - terraform -chdir=${TF_WORKDIR} apply -auto-approve tfplan
-  dependencies:
-    - plan               # <─ one item, still a YAML list
+    - terraform apply -input=false -auto-approve tfplan
+  needs:
+    - job: plan
+      artifacts: true
   when: manual
   only:
     - main
   environment:
     name: dev
-
-
-########################
-# 4. Build Docker image
-########################
-docker_build:
-  stage: build
-  image: docker:25.0
-  services: [ docker:dind ]
-  variables:
-    DOCKER_DRIVER: overlay2
-  before_script:
-    - apk add --no-cache python3 py3-pip
-    - pip install awscli
-    - aws ecr get-login-password --region ${AWS_REGION} | \
-      docker login --username AWS --password-stdin $(echo ${ECR_REPO_URI} | cut -d/ -f1)
-  script:
-    - docker build -t ${ECR_REPO_URI}:${CI_COMMIT_SHORT_SHA} ./docker
-    - docker push ${ECR_REPO_URI}:${CI_COMMIT_SHORT_SHA}
-  only:
-    - main
-
-#####################
-# 5. Deploy on EC2
-#####################
-ssh_deploy:
-  stage: deploy
-  image: alpine:3.20
-  needs: [ docker_build ]
-  before_script:
-    - apk add --no-cache openssh aws-cli
-    - mkdir -p ~/.ssh
-    - echo "$SSH_KEY" > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    # fetch carrier-grade IP of the WLZ instance tagged Name=wlz-app-dev-fe
-    - |
-      WLZ_IP=$(aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=wlz-app-dev-fe" \
-        --query 'Reservations[0].Instances[0].PublicIpAddress' \
-        --output text)
-      echo "WLZ_IP=$WLZ_IP" >> "$CI_ENVIRONMENT_FILE"
-  script: |
-    TAG=${CI_COMMIT_SHORT_SHA}
-    ssh -o StrictHostKeyChecking=no ec2-user@${WLZ_IP} <<'SSH'
-      set -e
-      sudo docker login -u AWS -p $(aws ecr get-login-password --region ${AWS_REGION})
-      sudo docker pull ${ECR_REPO_URI}:${TAG}
-      # stop old container (if any)
-      OLD=$(sudo docker ps -q)
-      [ -n "$OLD" ] && sudo docker stop "$OLD"
-      # run new container
-      sudo docker run -d --rm -p 80:3000 ${ECR_REPO_URI}:${TAG}
-  
-  SSH
-when: manual
-only:
-    - main
