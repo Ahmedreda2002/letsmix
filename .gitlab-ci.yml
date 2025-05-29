@@ -1,41 +1,31 @@
-# ------------- CI VARIABLES (set them in Settings ▸ CI/CD ▸ Variables) -------
-#  AWS_ACCESS_KEY_ID         → IAM user / role with S3+Dynamo permissions
-#  AWS_SECRET_ACCESS_KEY
-#  AWS_DEFAULT_REGION        → eu-west-3         (or your control-plane region)
-#  TF_STATE_BUCKET           → wlz-tf-state-portfolio-20250512  (example)
-#  TF_STATE_DDB_TABLE        → tf-locks
+image: hashicorp/terraform:1.8.5
 
 variables:
-  TF_WORKDIR: "."            # folder containing *.tf files
-  TF_IMAGE: "hashicorp/terraform:1.8.5"
+  TF_WORKDIR: "."                               # where the *.tf live
+  TF_STATE_BUCKET: "wlz-tf-state-portfolio-20250512"
+  TF_STATE_DDB_TABLE: "tf-locks"
+  AWS_DEFAULT_REGION: "eu-west-3"
 
-stages:
-  - validate
-  - plan
-  - apply
+stages: [validate, plan, apply]
 
-.default_tf:
-  image: $TF_IMAGE
-  before_script:
-    # configure remote backend dynamically
-    - |
-      cat > "$TF_WORKDIR/backend.tf" <<EOF
-      terraform {
-        backend "s3" {
-          bucket         = "${TF_STATE_BUCKET}"
-          key            = "global/terraform.tfstate"
-          region         = "${AWS_DEFAULT_REGION}"
-          dynamodb_table = "${TF_STATE_DDB_TABLE}"
-          encrypt        = true
-        }
+before_script:
+  # write back-end config on the fly & init
+  - |
+    cat > $TF_WORKDIR/backend.tf <<EOF
+    terraform {
+      backend "s3" {
+        bucket         = "${TF_STATE_BUCKET}"
+        key            = "global/terraform.tfstate"
+        region         = "${AWS_DEFAULT_REGION}"
+        dynamodb_table = "${TF_STATE_DDB_TABLE}"
+        encrypt        = true
       }
-      EOF
-    - cd "$TF_WORKDIR"
-    - terraform init -input=false -upgrade
-  tags: [terraform]
+    }
+    EOF
+  - cd $TF_WORKDIR
+  - terraform init -input=false -upgrade
 
 validate:
-  extends: .default_tf
   stage: validate
   script:
     - terraform fmt -check -recursive
@@ -45,28 +35,23 @@ validate:
     - main
 
 plan:
-  extends: .default_tf
   stage: plan
   script:
     - terraform plan -input=false -out=tfplan
   artifacts:
-    name: tfplan
-    paths:
-      - $TF_WORKDIR/tfplan
+    paths: [ $TF_WORKDIR/tfplan ]
     expire_in: 1 hour
-  needs: []
   only:
     - main
 
 apply:
-  extends: .default_tf
   stage: apply
   script:
     - terraform apply -input=false -auto-approve tfplan
   needs:
     - job: plan
       artifacts: true
-  when: manual
+  when: manual              # click “Play” to deploy
   only:
     - main
   environment:
