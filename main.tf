@@ -1,0 +1,47 @@
+/* ───── Network ───── */
+module "network" {
+  source   = "./modules/network"
+  wlz_name = var.wlz_name
+}
+
+/* ───── Compute (EC2 front end) ───── */
+module "compute" {
+  source        = "./modules/compute"
+  public_subnet = module.network.public_subnet_ids[0]
+
+  ami_id        = var.ami_id
+  instance_type = var.instance_type
+  project       = var.project
+  env           = var.env
+}
+
+/* ───── Storage (S3 artifacts) ───── */
+module "storage" {
+  source  = "./modules/storage"
+  project = var.project
+  env     = var.env
+}
+
+/* ───── DNS (public hosted zone) ───── */
+module "dns" {
+  source = "./modules/dns"
+  domain = var.domain
+}
+
+/* ─── Edge (Route 53 A-record + ACM + CloudFront) ─── */
+module "edge" {
+  source      = "./modules/edge"
+
+  domain      = var.domain
+  frontend_ip = module.compute.frontend_ip
+  project     = var.project
+  env         = var.env
+  zone_id      = module.dns.zone_id     # ← pass the ID
+
+}
+
+
+/* ─── Outputs ─── */
+output "cloudfront_url" {
+  value = module.edge.cf_domain_name
+}

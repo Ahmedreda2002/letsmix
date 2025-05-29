@@ -1,0 +1,30 @@
+########################################################
+# Terraform                                             
+########################################################
+# Local provider/cache dir (hundreds of MB):
+.terraform/
+
+# Local state files
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+
+# Variable overrides that may contain secrets
+terraform.tfvars
+*.tfvars
+
+# Plan files
+tfplan
+*.tfplan
+
+########################################################
+# Editor / IDE                                          
+########################################################
+# VS Code
+.vscode/
+
+# macOS & Windows cruft
+.DS_Store
+Thumbs.db
