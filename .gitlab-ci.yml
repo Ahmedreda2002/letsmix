@@ -10,6 +10,7 @@ variables:
 
 .default_tf:
   image: hashicorp/terraform:${TF_VER}
+    entrypoint: [""]               #  ← add this line
   before_script:
     - cd "$TF_WORKDIR"
     - terraform --version
