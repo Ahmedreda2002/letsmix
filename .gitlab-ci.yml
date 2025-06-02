@@ -5,27 +5,33 @@ variables:
 
 stages: [fmt, plan, apply, deploy]
 
-# ---------- Terraform ----------
+############################
+# Terraform template
+############################
 .default_tf:
   image:
     name: hashicorp/terraform:${TF_VER}
     entrypoint: [""]
   before_script:
-    - terraform -chdir=$TF_WORKDIR init \
-        -backend-config="bucket=$TF_STATE_BUCKET" \
-        -backend-config="dynamodb_table=$TF_STATE_DDB_TABLE" \
-        -backend-config="region=$AWS_DEFAULT_REGION"
+    - terraform -chdir=${TF_WORKDIR} init \
+        -backend-config="bucket=${TF_STATE_BUCKET}" \
+        -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
+        -backend-config="region=${AWS_DEFAULT_REGION}"
 
 fmt:
   extends: .default_tf
   stage: fmt
-  script: terraform fmt -check -recursive
+  script:
+    - terraform fmt -check -recursive
 
 plan:
   extends: .default_tf
   stage: plan
-  script: terraform validate && terraform plan -out=tfplan
-  artifacts: { paths: [tfplan] }
+  script:
+    - terraform validate
+    - terraform plan -out=tfplan
+  artifacts:
+    paths: [tfplan]
 
 apply:
   extends: .default_tf
@@ -34,10 +40,14 @@ apply:
     terraform apply -auto-approve tfplan
     terraform output -json > tf.json
     jq -r 'to_entries|map("TFOUT_\(.key|ascii_upcase)=\(.value.value)")|.[]' tf.json > tf.env
-  artifacts: { reports: { dotenv: tf.env } }
+  artifacts:
+    reports:
+      dotenv: tf.env
   when: manual
 
-# ---------- Deploy Navidrome ----------
+############################
+# Deploy Navidrome
+############################
 deploy:
   stage: deploy
   needs: [apply]
