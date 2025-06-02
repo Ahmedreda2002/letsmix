@@ -3,10 +3,10 @@ variables:
   AWS_DEFAULT_REGION: "eu-west-3"
   TF_WORKDIR: "infra"
 
-stages: [fmt, plan, apply, deploy]
+stages: [fmt, plan, apply, deploy, destroy]
 
 ############################
-# Terraform template
+# Terraform template (shared)
 ############################
 .default_tf:
   image:
@@ -61,3 +61,18 @@ deploy:
       sudo systemctl restart navidrome
     EOF
   when: manual
+
+############################
+# Tear down everything
+############################
+destroy:
+  stage: destroy
+  image:
+    name: hashicorp/terraform:${TF_VER}
+    entrypoint: [""]
+  before_script:
+    - terraform -chdir=${TF_WORKDIR} init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
+  script:
+    - terraform destroy -auto-approve
+  when: manual
+  allow_failure: false
