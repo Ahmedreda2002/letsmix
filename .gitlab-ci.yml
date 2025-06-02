@@ -1,44 +1,66 @@
+# ----------------------------------
+# .gitlab-ci.yml – Option 2 Pipeline (all -var flags on one line)
+# ----------------------------------
 variables:
   TF_VER: "1.8.5"
   AWS_DEFAULT_REGION: "eu-west-3"
-  TF_WORKDIR: "."
+  TF_WORKDIR: "."           # Terraform lives at the repo root
 
 stages: [fmt, plan, apply, deploy, destroy]
 
+############################
+# Shared Terraform template
+############################
 .default_tf:
   image:
     name: hashicorp/terraform:${TF_VER}
-    entrypoint: [""]
+    entrypoint: [""]                      # so we can run shell commands
   before_script:
+    # Initialize backend using protected CI variables:
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
 
+############################
+# 1. Format / lint
+############################
 fmt:
   extends: .default_tf
   stage: fmt
   script:
     - terraform fmt -check -recursive
 
+############################
+# 2. Validate & plan (all -var flags on one line)
+############################
 plan:
   extends: .default_tf
   stage: plan
   script:
     - terraform validate
-    - terraform plan -out=tfplan
+    - terraform plan -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-XXXXX" -out=tfplan
   artifacts:
-    paths: [tfplan]
+    paths:
+      - tfplan
+    expire_in: 1 week
 
+############################
+# 3. Apply (manual) – all -var flags on one line
+############################
 apply:
   extends: .default_tf
   stage: apply
-  script: |
-    terraform apply -auto-approve tfplan
-    terraform output -json > tf.json
-    jq -r 'to_entries|map("TFOUT_\(.key|ascii_upcase)=\(.value.value)")|.[]' tf.json > tf.env
+  script:
+    - terraform apply -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-XXXXX" -auto-approve tfplan
+    - terraform output -json > tf.json
+    - |
+      jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' tf.json > tf.env
   artifacts:
     reports:
       dotenv: tf.env
   when: manual
 
+############################
+# 4. Deploy Navidrome (manual)
+############################
 deploy:
   stage: deploy
   needs: [apply]
@@ -47,25 +69,34 @@ deploy:
     - apk add --no-cache openssh-client
     - echo "$SSH_KEY" > id_rsa && chmod 600 id_rsa
     - ssh-keyscan -H "$TFOUT_WLZ_IP" >> ~/.ssh/known_hosts
-  script: |
-    scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_WLZ_IP:/tmp/
-    ssh -i id_rsa ec2-user@$TFOUT_WLZ_IP <<'EOF'
-      sudo mv /tmp/navidrome.toml /opt/navidrome/
-      sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml
-      sudo systemctl restart navidrome
-    EOF
+  script:
+    - scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_WLZ_IP:/tmp/
+    - |
+      ssh -i id_rsa ec2-user@$TFOUT_WLZ_IP <<'EOF'
+        sudo mv /tmp/navidrome.toml /opt/navidrome/
+        sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml
+        sudo systemctl restart navidrome
+      EOF
   when: manual
 
+############################
+# 5. Destroy (manual, all -var flags on one line)
+############################
 destroy:
   stage: destroy
   image:
     name: hashicorp/terraform:${TF_VER}
     entrypoint: [""]
   before_script:
-    - terraform init \
-        -backend-config="bucket=${TF_STATE_BUCKET}" \
-        -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
-        -backend-config="region=${AWS_DEFAULT_REGION}"
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
   script:
-    - terraform destroy -auto-approve
+    - terraform destroy -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-XXXXX" -auto-approve
   when: manual
+  allow_failure: false
+
+# -----------------------
+# (Optional) runner tags
+# -----------------------
+# If you have a self-hosted runner tagged “wlz”, uncomment:
+# default:
+#   tags: [wlz]
