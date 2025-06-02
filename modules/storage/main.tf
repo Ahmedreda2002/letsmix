@@ -1,10 +1,14 @@
-variable "project" { type = string }
-variable "env" { type = string }
-
 resource "aws_s3_bucket" "artifact" {
-  bucket        = "${var.project}-${var.env}-artifacts"
+  # 1) Lowercase the inputs
+  # 2) Replace any underscores (“_”) with hyphens (“-”)
+  bucket = "${replace(lower(var.project), "_", "-")}-${replace(lower(var.env), "_", "-")}-artifacts"
+
   force_destroy = false
-  versioning { enabled = true }
+
+  versioning {
+    enabled = true
+  }
+
   server_side_encryption_configuration {
     rule {
       apply_server_side_encryption_by_default {
@@ -12,7 +16,9 @@ resource "aws_s3_bucket" "artifact" {
       }
     }
   }
-  tags = { Project = var.project, Env = var.env }
-}
 
-output "artifact_bucket" { value = aws_s3_bucket.artifact.bucket }
+  tags = {
+    Project = var.project
+    Env     = var.env
+  }
+}
