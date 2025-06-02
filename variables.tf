@@ -1,6 +1,6 @@
-variable "project"        { type = string }
-variable "env"            { type = string }
-variable "domain"         { type = string }    # e.g. example.com
+variable "project" { type = string }
+variable "env" { type = string }
+variable "domain" { type = string } # e.g. example.com
 variable "wlz_name" {
   type    = string
   default = "eu-west-3-cmn-wlz-1a"

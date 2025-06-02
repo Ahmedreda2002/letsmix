@@ -63,7 +63,7 @@ resource "aws_cloudfront_distribution" "dist" {
   enabled             = true
   default_root_object = "/"
 
-  aliases = [var.domain]   # respond to stage-pfe.store
+  aliases = [var.domain] # respond to stage-pfe.store
 
   origin {
     domain_name = local.origin_fqdn
