@@ -10,10 +10,7 @@ stages: [fmt, plan, apply, deploy, destroy]
     name: hashicorp/terraform:${TF_VER}
     entrypoint: [""]
   before_script:
-    - terraform init \
-        -backend-config="bucket=${TF_STATE_BUCKET}" \
-        -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" \
-        -backend-config="region=${AWS_DEFAULT_REGION}"
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
 
 fmt:
   extends: .default_tf
