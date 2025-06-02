@@ -1,15 +1,15 @@
-/* ---------- Data  ---------- */
+/* ---------- Data ---------- */
 data "aws_subnet" "public" {
   id = var.public_subnet
 }
 
 /* ---------- Security-group (HTTP on 80) ---------- */
 resource "aws_security_group" "frontend_sg" {
-  name   = "${var.project}-${var.env}-frontend"
+  name   = "${var.project}-${var.env}-frontend-sg"
   vpc_id = data.aws_subnet.public.vpc_id
 
   ingress {
-    description = "HTTP"
+    description = "Allow HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -30,20 +30,22 @@ resource "aws_security_group" "frontend_sg" {
 }
 
 /* ---------- WLZ EC2 front-end ---------- */
-resource "aws_instance" "frontend" {
+resource "aws_instance" "web" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
-  subnet_id              = var.public_subnet
+  availability_zone      = "euw3-cmn1-wlz1"
+  subnet_id              = data.aws_subnet.public.id
+  key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.frontend_sg.id]
 
   tags = {
-    Name    = "${var.project}-${var.env}-fe"
     Project = var.project
     Env     = var.env
+    Domain  = var.domain
   }
 
   root_block_device {
-    volume_type = "gp2" # WLZ-compatible
+    volume_type = "gp2"
     volume_size = 20
   }
 
@@ -61,7 +63,7 @@ resource "aws_instance" "frontend" {
     # Docker Compose v2 plugin
     yum install -y docker-compose-plugin
 
-    # Allow ec2-user to use docker later
+    # Allow ec2-user to use docker
     usermod -aG docker ec2-user
 
     cd /home/ec2-user
@@ -77,5 +79,3 @@ resource "aws_instance" "frontend" {
     docker compose up -d --remove-orphans
   EOF
 }
-
-

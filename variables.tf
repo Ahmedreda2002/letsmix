@@ -16,3 +16,8 @@ variable "instance_type" {
   default = "t3.medium"
 }
 
+variable "key_name" {
+  description = "SSH key pair name to attach to the instance"
+  type        = string
+}
+
