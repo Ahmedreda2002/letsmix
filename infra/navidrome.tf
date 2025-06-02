@@ -10,15 +10,15 @@ resource "aws_key_pair" "ci" {
 #  Navidrome EC2 in Casablanca WLZ
 ########################################
 resource "aws_instance" "music" {
-  ami               = data.aws_ami.amazon_linux_2023.id
-  instance_type     = "t3.medium"
-  subnet_id         = module.network.public_subnet_ids[0]
-  security_groups   = [module.network.sg_id]
-  key_name          = aws_key_pair.ci.key_name
+  ami             = data.aws_ami.amazon_linux_2023.id
+  instance_type   = "t3.medium"
+  subnet_id       = module.network.public_subnet_ids[0]
+  security_groups = [module.network.sg_id]
+  key_name        = aws_key_pair.ci.key_name
 
   ebs_block_device {
     device_name = "/dev/xvdb"
-    volume_size = 200   # music library
+    volume_size = 200 # music library
     volume_type = "gp3"
   }
 

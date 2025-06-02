@@ -1,10 +1,10 @@
 # modules/edge/variables.tf
 variable "domain" {
-  type = string          # e.g. "stage-pfe.store"
+  type = string # e.g. "stage-pfe.store"
 }
 
 variable "frontend_ip" {
-  type = string          # carrier-grade IP of WLZ EC2
+  type = string # carrier-grade IP of WLZ EC2
 }
 
 variable "project" {
