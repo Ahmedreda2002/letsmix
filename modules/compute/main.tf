@@ -35,7 +35,7 @@ resource "aws_instance" "web" {
   instance_type = var.instance_type
   /*availability_zone      = "euw3-cmn1-wlz1"*/
   subnet_id              = data.aws_subnet.public.id
-  key_name = var.key_name
+  key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.frontend_sg.id]
 
   tags = {
