@@ -13,7 +13,7 @@ module "compute" {
   env           = var.env
   domain        = var.domain
   ami_id        = var.ami_id
-  key_name      = var.key_name
+  key_name = aws_key_pair.ci.key_name
 }
 
 
@@ -42,6 +42,12 @@ module "edge" {
 
 }
 
+# ── aws_key_pair.tf ──
+
+resource "aws_key_pair" "ci" {
+  key_name   = "ci-key"                           # must match the string you pass as var.key_name
+  public_key = file("${path.module}/ci-key.pub")          # path on your local machine / runner machine
+}
 
 /* ─── Outputs ─── */
 output "cloudfront_url" {
