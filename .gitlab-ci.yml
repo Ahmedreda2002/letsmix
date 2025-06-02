@@ -43,20 +43,22 @@ plan:
     expire_in: 1 week
 
 ############################
-# 3. Apply (manual) – all -var flags on one line
+# 3. Apply (manual) – no -var flags when applying tfplan
 ############################
 apply:
   extends: .default_tf
   stage: apply
   script:
-    - terraform apply -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-074e262099d145e90" -var="key_name=ci-key" -auto-approve tfplan
+    # Apply the previously saved plan (tfplan) with no -var flags
+    - terraform apply -auto-approve tfplan
+    # Export outputs for downstream jobs
     - terraform output -json > tf.json
-    - |
-      jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' tf.json > tf.env
+    - jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' tf.json > tf.env
   artifacts:
     reports:
       dotenv: tf.env
   when: manual
+
 
 ############################
 # 4. Deploy Navidrome (manual)
