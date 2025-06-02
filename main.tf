@@ -30,13 +30,13 @@ module "dns" {
 
 /* ─── Edge (Route 53 A-record + ACM + CloudFront) ─── */
 module "edge" {
-  source      = "./modules/edge"
+  source = "./modules/edge"
 
   domain      = var.domain
   frontend_ip = module.compute.frontend_ip
   project     = var.project
   env         = var.env
-  zone_id      = module.dns.zone_id     # ← pass the ID
+  zone_id     = module.dns.zone_id # ← pass the ID
 
 }
 

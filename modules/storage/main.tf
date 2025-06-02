@@ -1,8 +1,8 @@
 variable "project" { type = string }
-variable "env"     { type = string }
+variable "env" { type = string }
 
 resource "aws_s3_bucket" "artifact" {
-  bucket = "${var.project}-${var.env}-artifacts"
+  bucket        = "${var.project}-${var.env}-artifacts"
   force_destroy = false
   versioning { enabled = true }
   server_side_encryption_configuration {

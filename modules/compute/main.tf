@@ -31,9 +31,9 @@ resource "aws_security_group" "frontend_sg" {
 
 /* ---------- WLZ EC2 front-end ---------- */
 resource "aws_instance" "frontend" {
-  ami           = var.ami_id
-  instance_type = var.instance_type
-  subnet_id     = var.public_subnet
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  subnet_id              = var.public_subnet
   vpc_security_group_ids = [aws_security_group.frontend_sg.id]
 
   tags = {
@@ -43,7 +43,7 @@ resource "aws_instance" "frontend" {
   }
 
   root_block_device {
-    volume_type = "gp2"   # WLZ-compatible
+    volume_type = "gp2" # WLZ-compatible
     volume_size = 20
   }
 

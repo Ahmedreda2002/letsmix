@@ -1,0 +1,9 @@
+MusicFolder  = "/music"
+DataFolder   = "/var/lib/navidrome"
+Address      = "0.0.0.0"
+Port         = 4533
+ScanSchedule = "@every 6h"
+LogLevel     = "info"
+
+# If you point Route 53 later:
+# BaseURL = "https://stage-pfe.store"
