@@ -1,5 +1,4 @@
-/* ---------- Outputs ---------- */
 output "frontend_ip" {
-  description = "Carrier-grade IP of the WLZ front-end instance"
-  value       = aws_instance.frontend.private_ip
+  description = "Private IP of the compute instance"
+  value       = aws_instance.web.private_ip
 }
