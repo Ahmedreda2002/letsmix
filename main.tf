@@ -7,13 +7,15 @@ module "network" {
 /* ───── Compute (EC2 front end) ───── */
 module "compute" {
   source        = "./modules/compute"
-  public_subnet = module.network.public_subnet_ids[0]
-
-  ami_id        = var.ami_id
+  public_subnet = module.network.public_subnet_ids[0]   # or some other subnet ID you fetched
   instance_type = var.instance_type
   project       = var.project
   env           = var.env
+  domain        = var.domain
+  ami_id        = var.ami_id
+  key_name      = var.key_name
 }
+
 
 /* ───── Storage (S3 artifacts) ───── */
 module "storage" {
