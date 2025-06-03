@@ -40,14 +40,7 @@ plan:
   stage: plan
   script:
     - terraform validate
-    - terraform plan \
-        -var="project=${CI_PROJECT_NAME}" \
-        -var="env=prod" \
-        -var="domain=stage-pfe.store" \
-        -var="ami_id=ami-074e262099d145e90" \
-        -var="key_name=ci-key" \
-        -var="zone_id=${ZONE_ID}" \
-        -out=tfplan
+    - terraform plan -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-074e262099d145e90" -var="key_name=ci-key" -var="zone_id=${ZONE_ID}" -out=tfplan
   artifacts:
     paths:
       - tfplan
