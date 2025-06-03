@@ -146,8 +146,7 @@ resource "aws_instance" "web" {
 resource "aws_eip" "web_eip" {
   # 'domain' is the newer name for 'vpc':
   domain               = "vpc"
-  network_border_group = "eu-west-3-wlzm1"
-
+  network_border_group = "eu-west-3-cmn-wlz-1"
   tags = {
     Name    = "${var.project}-${var.env}-web-eip"
     Project = var.project
