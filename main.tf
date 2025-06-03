@@ -36,7 +36,6 @@ module "edge" {
   domain             = var.domain
   zone_id            = var.zone_id
   frontend_public_ip = module.compute.frontend_public_ip # NEW: public IP
-  frontend_ip        = module.compute.frontend_public_ip # Added required attribute
   project            = var.project
   env                = var.env
 }

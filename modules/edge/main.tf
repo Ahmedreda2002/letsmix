@@ -6,7 +6,33 @@ provider "aws" {
   region = "us-east-1"
 }
 
+################################
+# 0. Variables
+################################
+variable "domain" {
+  description = "The apex domain (e.g. stage-pfe.store)"
+  type        = string
+}
 
+variable "zone_id" {
+  description = "Route 53 hosted zone ID for the domain"
+  type        = string
+}
+
+variable "frontend_public_ip" {
+  description = "The EC2 instance’s public IP (so CloudFront can fetch from it)"
+  type        = string
+}
+
+variable "project" {
+  description = "Project name for tagging"
+  type        = string
+}
+
+variable "env" {
+  description = "Environment label (e.g. prod, stage)"
+  type        = string
+}
 
 ################################
 # 1. ACM certificate (us-east-1)
@@ -22,10 +48,9 @@ resource "aws_acm_certificate" "cert" {
 }
 
 ########################################################
-# 2. DNS validation CNAME (single record, TF-1.8 safe)
+# 2. DNS validation CNAME (single record, TF 1.8 safe)
 ########################################################
 locals {
-  # Convert the set → list so we can extract the first element
   cert_dvo = element(
     tolist(aws_acm_certificate.cert.domain_validation_options),
     0
@@ -48,19 +73,18 @@ resource "aws_acm_certificate_validation" "cert" {
 }
 
 ########################################################
-# 3. origin.<domain>  A-record → EC2’s public IP
+# 3. origin.<domain> A-record → EC2’s public IP (only if set)
 ########################################################
 locals {
   origin_fqdn = "origin.${var.domain}"
 }
 
 resource "aws_route53_record" "origin_a" {
+  count   = length(var.frontend_public_ip) > 0 ? 1 : 0
   zone_id = var.zone_id
   name    = local.origin_fqdn
   type    = "A"
   ttl     = 60
-
-  # IMPORTANT: point at the EC2’s public IP, not its private IP
   records = [var.frontend_public_ip]
 }
 
@@ -72,7 +96,6 @@ resource "aws_cloudfront_distribution" "dist" {
   enabled             = true
   default_root_object = "/"
 
-  # Make CloudFront respond to your apex domain (e.g. stage-pfe.store)
   aliases = [var.domain]
 
   origin {
@@ -120,8 +143,10 @@ resource "aws_cloudfront_distribution" "dist" {
     Env     = var.env
   }
 
-  # Ensure Route 53’s origin A record is created before CloudFront
-  depends_on = [aws_route53_record.origin_a]
+  depends_on = [
+    aws_acm_certificate_validation.cert,
+    aws_route53_record.origin_a
+  ]
 }
 
 ################################################
@@ -139,3 +164,15 @@ resource "aws_route53_record" "root_alias" {
   }
 }
 
+################
+# 6. Outputs
+################
+output "cf_domain_name" {
+  description = "The CloudFront distribution domain (e.g. d1234abcdef.cloudfront.net)"
+  value       = aws_cloudfront_distribution.dist.domain_name
+}
+
+output "origin_fqdn" {
+  description = "The DNS name (origin.<domain>) that CloudFront uses as its origin"
+  value       = local.origin_fqdn
+}
