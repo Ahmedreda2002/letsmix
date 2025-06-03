@@ -92,12 +92,12 @@ resource "aws_security_group" "frontend_sg" {
 # 2. WLZ EC2 front‐end Instance
 ################################
 resource "aws_instance" "web" {
-  ami           = var.ami_id
-  instance_type = var.instance_type
-  # availability_zone      = "euw3-cmn1-wlz1"  # Wavelength AZ
-  subnet_id              = var.public_subnet # Passed in from root
-  key_name               = var.key_name      # Passed in from root
-  vpc_security_group_ids = [var.sg_id]       # Passed in from root
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  availability_zone      = "eu-west-3-cmn-wlz-1a" # WLZ AZ in Paris
+  subnet_id              = var.public_subnet      # Passed in from root
+  key_name               = var.key_name           # Passed in from root
+  vpc_security_group_ids = [var.sg_id]            # Passed in from root
 
   tags = {
     Project = var.project
@@ -145,7 +145,8 @@ resource "aws_instance" "web" {
 ################################
 resource "aws_eip" "web_eip" {
   # 'domain' is the newer name for 'vpc':
-  domain = "vpc"
+  domain               = "vpc"
+  network_border_group = "eu-west-3-wlzm1"
 
   tags = {
     Name    = "${var.project}-${var.env}-web-eip"
