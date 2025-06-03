@@ -6,6 +6,8 @@ provider "aws" {
   region = "us-east-1"
 }
 
+
+
 ################################
 # 1. ACM certificate (us-east-1)
 ################################
@@ -13,14 +15,17 @@ resource "aws_acm_certificate" "cert" {
   provider          = aws.use1
   domain_name       = var.domain
   validation_method = "DNS"
-  lifecycle { create_before_destroy = true }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ########################################################
 # 2. DNS validation CNAME (single record, TF-1.8 safe)
 ########################################################
 locals {
-  # convert the set → list, then grab the first element
+  # Convert the set → list so we can extract the first element
   cert_dvo = element(
     tolist(aws_acm_certificate.cert.domain_validation_options),
     0
@@ -43,16 +48,20 @@ resource "aws_acm_certificate_validation" "cert" {
 }
 
 ########################################################
-# 3. origin.<domain>  A-record → WLZ instance IP
+# 3. origin.<domain>  A-record → EC2’s public IP
 ########################################################
-locals { origin_fqdn = "origin.${var.domain}" }
+locals {
+  origin_fqdn = "origin.${var.domain}"
+}
 
 resource "aws_route53_record" "origin_a" {
   zone_id = var.zone_id
   name    = local.origin_fqdn
   type    = "A"
   ttl     = 60
-  records = [var.frontend_ip]
+
+  # IMPORTANT: point at the EC2’s public IP, not its private IP
+  records = [var.frontend_public_ip]
 }
 
 ###################################
@@ -63,7 +72,8 @@ resource "aws_cloudfront_distribution" "dist" {
   enabled             = true
   default_root_object = "/"
 
-  aliases = [var.domain] # respond to stage-pfe.store
+  # Make CloudFront respond to your apex domain (e.g. stage-pfe.store)
+  aliases = [var.domain]
 
   origin {
     domain_name = local.origin_fqdn
@@ -85,7 +95,9 @@ resource "aws_cloudfront_distribution" "dist" {
 
     forwarded_values {
       query_string = false
-      cookies { forward = "none" }
+      cookies {
+        forward = "none"
+      }
     }
   }
 
@@ -98,7 +110,9 @@ resource "aws_cloudfront_distribution" "dist" {
   }
 
   restrictions {
-    geo_restriction { restriction_type = "none" }
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
   tags = {
@@ -106,6 +120,7 @@ resource "aws_cloudfront_distribution" "dist" {
     Env     = var.env
   }
 
+  # Ensure Route 53’s origin A record is created before CloudFront
   depends_on = [aws_route53_record.origin_a]
 }
 
@@ -124,9 +139,3 @@ resource "aws_route53_record" "root_alias" {
   }
 }
 
-################
-# 6. Outputs
-################
-output "cf_domain_name" {
-  value = aws_cloudfront_distribution.dist.domain_name
-}
