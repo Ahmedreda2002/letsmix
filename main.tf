@@ -2,6 +2,8 @@
 module "network" {
   source   = "./modules/network"
   wlz_name = var.wlz_name
+  project  = var.project
+  env      = var.env
 }
 
 /* ───── Compute (EC2 front end) ───── */
