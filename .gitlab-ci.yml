@@ -3,6 +3,9 @@ variables:
   AWS_DEFAULT_REGION: "eu-west-3"
   TF_WORKDIR: "."  # Terraform root directory
 
+  # Ensure you set ZONE_ID in GitLab → Settings → CI/CD → Variables
+  #   ZONE_ID = <your Route 53 hosted zone ID>
+
 stages:
   - fmt
   - plan
@@ -37,7 +40,14 @@ plan:
   stage: plan
   script:
     - terraform validate
-    - terraform plan -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-074e262099d145e90" -var="key_name=ci-key" -out=tfplan
+    - terraform plan \
+        -var="project=${CI_PROJECT_NAME}" \
+        -var="env=prod" \
+        -var="domain=stage-pfe.store" \
+        -var="ami_id=ami-074e262099d145e90" \
+        -var="key_name=ci-key" \
+        -var="zone_id=${ZONE_ID}" \
+        -out=tfplan
   artifacts:
     paths:
       - tfplan
@@ -71,15 +81,12 @@ deploy:
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh
     - echo "$SSH_KEY" > id_rsa && chmod 600 id_rsa
-    - if [ -n "$TFOUT_FRONTEND_PRIVATE_IP" ]; then ssh-keyscan -H "$TFOUT_FRONTEND_PRIVATE_IP" >> ~/.ssh/known_hosts; fi
+    - if [ -n "$TFOUT_FRONTEND_PUBLIC_IP" ]; then ssh-keyscan -H "$TFOUT_FRONTEND_PUBLIC_IP" >> ~/.ssh/known_hosts; fi
   script:
     - |
-      if [ -n "$TFOUT_FRONTEND_PRIVATE_IP" ]; then
-        scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_FRONTEND_PRIVATE_IP:/tmp/
-      fi
-    - |
-      if [ -n "$TFOUT_FRONTEND_PRIVATE_IP" ]; then
-        ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PRIVATE_IP "sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome"
+      if [ -n "$TFOUT_FRONTEND_PUBLIC_IP" ]; then
+        scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_FRONTEND_PUBLIC_IP:/tmp/
+        ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PUBLIC_IP "sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome"
       fi
   when: manual
 
@@ -94,6 +101,6 @@ destroy:
   before_script:
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
   script:
-    - terraform destroy -auto-approve -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-074e262099d145e90" -var="key_name=ci-key"
+    - terraform destroy -auto-approve -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-074e262099d145e90" -var="key_name=ci-key" -var="zone_id=${ZONE_ID}"
   when: manual
   allow_failure: false
