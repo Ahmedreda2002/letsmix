@@ -76,13 +76,12 @@ deploy:
     - |
       if [ -n "$TFOUT_FRONTEND_PRIVATE_IP" ]; then
         scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_FRONTEND_PRIVATE_IP:/tmp/
-        ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PRIVATE_IP << 'EOF'
-        sudo mv /tmp/navidrome.toml /opt/navidrome/
-        sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml
-        sudo systemctl restart navidrome
-        EOF
       fi
-when: manual
+    - |
+      if [ -n "$TFOUT_FRONTEND_PRIVATE_IP" ]; then
+        ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PRIVATE_IP "sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome"
+      fi
+  when: manual
 
 ############################
 # 5. Destroy (manual)
