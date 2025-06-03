@@ -51,6 +51,7 @@ resource "aws_acm_certificate" "cert" {
 # 2. DNS validation CNAME (single record, TF 1.8 safe)
 ########################################################
 locals {
+  # Take the first domain_validation_options entry
   cert_dvo = element(
     tolist(aws_acm_certificate.cert.domain_validation_options),
     0
@@ -73,18 +74,19 @@ resource "aws_acm_certificate_validation" "cert" {
 }
 
 ########################################################
-# 3. origin.<domain> A-record → EC2’s public IP (only if set)
+# 3. origin.<domain> A-record → EC2’s public IP
 ########################################################
 locals {
   origin_fqdn = "origin.${var.domain}"
 }
 
 resource "aws_route53_record" "origin_a" {
-  count   = length(var.frontend_public_ip) > 0 ? 1 : 0
   zone_id = var.zone_id
   name    = local.origin_fqdn
   type    = "A"
   ttl     = 60
+
+  # Always point to whatever public IP the compute module produced
   records = [var.frontend_public_ip]
 }
 
@@ -96,6 +98,7 @@ resource "aws_cloudfront_distribution" "dist" {
   enabled             = true
   default_root_object = "/"
 
+  # CloudFront responds to your apex domain
   aliases = [var.domain]
 
   origin {
@@ -168,11 +171,11 @@ resource "aws_route53_record" "root_alias" {
 # 6. Outputs
 ################
 output "cf_domain_name" {
-  description = "The CloudFront distribution domain (e.g. d1234abcdef.cloudfront.net)"
+  description = "CloudFront distribution domain (e.g. d1234abcdef.cloudfront.net)"
   value       = aws_cloudfront_distribution.dist.domain_name
 }
 
 output "origin_fqdn" {
-  description = "The DNS name (origin.<domain>) that CloudFront uses as its origin"
+  description = "The DNS name (origin.<domain>) used by CloudFront as its origin"
   value       = local.origin_fqdn
 }
