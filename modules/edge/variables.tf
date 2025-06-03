@@ -19,3 +19,8 @@ variable "zone_id" {
   description = "ID of the public hosted zone for var.domain"
   type        = string
 }
+variable "frontend_public_ip" {
+  description = "Public IPv4 of the compute instance"
+  type        = string
+}
+

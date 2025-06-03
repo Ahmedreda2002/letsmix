@@ -20,4 +20,8 @@ variable "key_name" {
   description = "SSH key pair name to attach to the instance"
   type        = string
 }
+variable "zone_id" {
+  description = "Route 53 public hosted zone ID for the domain"
+  type        = string
+}
 

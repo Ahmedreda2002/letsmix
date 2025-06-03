@@ -32,15 +32,15 @@ module "dns" {
 
 /* ─── Edge (Route 53 A-record + ACM + CloudFront) ─── */
 module "edge" {
-  source = "./modules/edge"
-
-  domain      = var.domain
-  frontend_ip = module.compute.frontend_ip
-  project     = var.project
-  env         = var.env
-  zone_id     = module.dns.zone_id # ← pass the ID
-
+  source             = "./modules/edge"
+  domain             = var.domain
+  zone_id            = var.zone_id
+  frontend_public_ip = module.compute.frontend_public_ip # NEW: public IP
+  frontend_ip        = module.compute.frontend_public_ip # Added required attribute
+  project            = var.project
+  env                = var.env
 }
+
 
 # ── aws_key_pair.tf ──
 
