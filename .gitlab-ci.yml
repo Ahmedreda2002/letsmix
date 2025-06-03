@@ -1,9 +1,14 @@
 variables:
   TF_VER: "1.8.5"
   AWS_DEFAULT_REGION: "eu-west-3"
-  TF_WORKDIR: "."           # Terraform root directory
+  TF_WORKDIR: "."  # Terraform root directory
 
-stages: [fmt, plan, apply, deploy, destroy]
+stages:
+  - fmt
+  - plan
+  - apply
+  - deploy
+  - destroy
 
 ############################
 # Shared Terraform template
@@ -11,9 +16,8 @@ stages: [fmt, plan, apply, deploy, destroy]
 .default_tf:
   image:
     name: hashicorp/terraform:${TF_VER}
-    entrypoint: [""]                    # run shell commands easily
+    entrypoint: [""]
   before_script:
-    # Initialize the backend using your CI variables:
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
 
 ############################
@@ -46,16 +50,9 @@ apply:
   extends: .default_tf
   stage: apply
   script:
-    # Apply the plan from 'plan' job
     - terraform apply -auto-approve tfplan
-
-    # Export outputs.json
     - terraform output -json > tf.json
-
-    # Install jq so we can transform JSON → dotenv
     - apk add --no-cache jq
-
-    # Convert JSON outputs into tf.env for downstream jobs
     - jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' tf.json > tf.env
   artifacts:
     reports:
@@ -67,19 +64,17 @@ apply:
 ############################
 deploy:
   stage: deploy
-  needs: [apply]
+  needs:
+    - apply
   image: alpine:latest
   before_script:
     - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
     - echo "$SSH_KEY" > id_rsa && chmod 600 id_rsa
     - ssh-keyscan -H "$TFOUT_WLZ_IP" >> ~/.ssh/known_hosts
   script:
     - scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_WLZ_IP:/tmp/
-    - ssh -i id_rsa ec2-user@$TFOUT_WLZ_IP << 'EOF'
-      sudo mv /tmp/navidrome.toml /opt/navidrome/
-      sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml
-      sudo systemctl restart navidrome
-      EOF
+    - ssh -i id_rsa ec2-user@$TFOUT_WLZ_IP 'sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome'
   when: manual
 
 ############################
@@ -89,7 +84,7 @@ destroy:
   stage: destroy
   image:
     name: hashicorp/terraform:${TF_VER}
-    entrypoint: [""]  
+    entrypoint: [""]
   before_script:
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
   script:
