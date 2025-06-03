@@ -14,7 +14,11 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.this.id
   cidr_block              = "10.0.1.0/28"
   availability_zone_id    = data.aws_availability_zone.wlz.zone_id
-  map_public_ip_on_launch = false
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.project}-${var.env}-public-subnet"
+  }
 }
 
 resource "aws_ec2_carrier_gateway" "cg" {
