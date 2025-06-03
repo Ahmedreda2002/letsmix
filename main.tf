@@ -7,13 +7,14 @@ module "network" {
 /* ───── Compute (EC2 front end) ───── */
 module "compute" {
   source        = "./modules/compute"
-  public_subnet = module.network.public_subnet_ids[0] # or some other subnet ID you fetched
+  public_subnet = module.network.public_subnet_ids[0]
+  sg_id         = module.compute.frontend_sg_id # assumes your network module exports this SG ID
+  key_name      = aws_key_pair.ci.key_name      # assumes root created this key_pair
+  ami_id        = var.ami_id
   instance_type = var.instance_type
   project       = var.project
   env           = var.env
   domain        = var.domain
-  ami_id        = var.ami_id
-  key_name      = aws_key_pair.ci.key_name
 }
 
 
@@ -35,7 +36,7 @@ module "edge" {
   source             = "./modules/edge"
   domain             = var.domain
   zone_id            = var.zone_id
-  frontend_public_ip = module.compute.frontend_public_ip # NEW: public IP
+  frontend_public_ip = module.compute.frontend_public_ip
   project            = var.project
   env                = var.env
 }
