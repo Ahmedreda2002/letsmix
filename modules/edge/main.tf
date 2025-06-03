@@ -82,13 +82,12 @@ locals {
 
 resource "aws_route53_record" "origin_a" {
   zone_id = var.zone_id
-  name    = local.origin_fqdn
+  name    = "origin.${var.domain}"
   type    = "A"
   ttl     = 60
-
-  # Always point to whatever public IP the compute module produced
   records = [var.frontend_public_ip]
 }
+
 
 ###################################
 # 4. CloudFront distribution
