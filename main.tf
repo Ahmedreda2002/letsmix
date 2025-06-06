@@ -10,14 +10,16 @@ module "network" {
 module "compute" {
   source        = "./modules/compute"
   public_subnet = module.network.public_subnet_ids[0]
-  key_name      = aws_key_pair.ci.key_name
+  key_name      = var.key_name
   ami_id        = var.ami_id
   instance_type = var.instance_type
   project       = var.project
   env           = var.env
   domain        = var.domain
-  # 👉 no sg_id argument anymore
+
+  # <-- no sg_id here!
 }
+
 
 
 /* ───── Storage (S3 artifacts) ───── */
