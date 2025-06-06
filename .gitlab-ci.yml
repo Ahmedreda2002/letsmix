@@ -1,10 +1,9 @@
 variables:
   TF_VER: "1.8.5"
   AWS_DEFAULT_REGION: "eu-west-3"
-  TF_WORKDIR: "."  # Terraform root directory
-
-  # Ensure you set ZONE_ID in GitLab → Settings → CI/CD → Variables
-  #   ZONE_ID = <your Route 53 hosted zone ID>
+  TF_WORKDIR: "."                     # Terraform root
+  # Required CI variables to set in GitLab UI:
+  #   TF_STATE_BUCKET, TF_STATE_DDB_TABLE, ZONE_ID, SSH_KEY, GIT_PUSH_TOKEN
 
 stages:
   - fmt
@@ -23,17 +22,40 @@ stages:
   before_script:
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="dynamodb_table=${TF_STATE_DDB_TABLE}" -backend-config="region=${AWS_DEFAULT_REGION}"
 
-############################
-# 1. Format / lint
-############################
-fmt:
+########################################
+# 0. Auto-format & gate Terraform files
+########################################
+# 0-a  Apply fmt, commit & push if needed
+fmt-fix:
   extends: .default_tf
   stage: fmt
+  variables:
+    GIT_STRATEGY: fetch                # allow git push inside job
+  rules:
+    - if: '$CI_COMMIT_BRANCH'          # run on branches/MRs, skip tags
+  script: |
+    terraform fmt -recursive
+    if ! git diff --quiet; then
+      echo "terraform fmt updated code – pushing auto-fix commit"
+      git config --global user.name  "fmt-bot"
+      git config --global user.email "fmt-bot@noreply"
+      git add -A
+      git commit -m "style: terraform fmt auto-fix"
+      git push https://${GIT_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git HEAD:${CI_COMMIT_REF_NAME}
+    else
+      echo "No formatting changes."
+    fi
+
+# 0-b  Fail if anything still unformatted
+fmt-check:
+  extends: .default_tf
+  stage: fmt
+  needs: []                            # run even if fmt-fix skipped
   script:
     - terraform fmt -check -recursive
 
 ############################
-# 2. Validate & plan
+# 1. Validate & plan
 ############################
 plan:
   extends: .default_tf
@@ -42,12 +64,11 @@ plan:
     - terraform validate
     - terraform plan -var="project=${CI_PROJECT_NAME}" -var="env=prod" -var="domain=stage-pfe.store" -var="ami_id=ami-074e262099d145e90" -var="key_name=ci-key" -var="zone_id=${ZONE_ID}" -out=tfplan
   artifacts:
-    paths:
-      - tfplan
+    paths: [tfplan]
     expire_in: 1 week
 
 ############################
-# 3. Apply (manual)—with jq install
+# 2. Apply (manual)
 ############################
 apply:
   extends: .default_tf
@@ -58,33 +79,30 @@ apply:
     - apk add --no-cache jq
     - jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' tf.json > tf.env
   artifacts:
-    reports:
-      dotenv: tf.env
+    reports: { dotenv: tf.env }
   when: manual
 
 ############################
-# 4. Deploy Navidrome (manual)
+# 3. Deploy Navidrome (manual)
 ############################
 deploy:
   stage: deploy
-  needs:
-    - apply
+  needs: [apply]
   image: alpine:latest
   before_script:
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh
     - echo "$SSH_KEY" > id_rsa && chmod 600 id_rsa
     - if [ -n "$TFOUT_FRONTEND_PUBLIC_IP" ]; then ssh-keyscan -H "$TFOUT_FRONTEND_PUBLIC_IP" >> ~/.ssh/known_hosts; fi
-  script:
-    - |
-      if [ -n "$TFOUT_FRONTEND_PUBLIC_IP" ]; then
-        scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_FRONTEND_PUBLIC_IP:/tmp/
-        ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PUBLIC_IP "sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome"
-      fi
+  script: |
+    if [ -n "$TFOUT_FRONTEND_PUBLIC_IP" ]; then
+      scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_FRONTEND_PUBLIC_IP:/tmp/
+      ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PUBLIC_IP "sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome"
+    fi
   when: manual
 
 ############################
-# 5. Destroy (manual)
+# 4. Destroy (manual)
 ############################
 destroy:
   stage: destroy
