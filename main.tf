@@ -10,13 +10,13 @@ module "network" {
 module "compute" {
   source        = "./modules/compute"
   public_subnet = module.network.public_subnet_ids[0]
-  sg_id         = module.compute.frontend_sg_id # assumes your network module exports this SG ID
-  key_name      = aws_key_pair.ci.key_name      # assumes root created this key_pair
+  key_name      = aws_key_pair.ci.key_name
   ami_id        = var.ami_id
   instance_type = var.instance_type
   project       = var.project
   env           = var.env
   domain        = var.domain
+  # 👉 no sg_id argument anymore
 }
 
 
@@ -35,13 +35,12 @@ module "dns" {
 
 /* ─── Edge (Route 53 A-record + ACM + CloudFront) ─── */
 module "edge" {
-  source             = "./modules/edge"
-  domain             = var.domain
-  zone_id            = var.zone_id
-  frontend_public_ip = module.compute.frontend_public_ip
-  project            = var.project
-  frontend_ip        = module.compute.frontend_ip
-  env                = var.env
+  source      = "./modules/edge"
+  domain      = var.domain
+  zone_id     = var.zone_id
+  frontend_ip = module.compute.frontend_public_ip
+  project     = var.project
+  env         = var.env
 }
 
 
@@ -56,3 +55,4 @@ resource "aws_key_pair" "ci" {
 output "cloudfront_url" {
   value = module.edge.cf_domain_name
 }
+
