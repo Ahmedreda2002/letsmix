@@ -60,27 +60,56 @@ resource "aws_instance" "web" {
   }
 
   user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
+  #!/bin/bash
+  set -e
+  exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
 
-      yum update -y
-    yum install -y git
+  # 1) Install basic tools
+  yum update -y
+  yum install -y curl
 
-      amazon-linux-extras install docker -y
-    systemctl enable --now docker
-    yum install -y docker-compose-plugin
-    usermod -aG docker ec2-user
-    
-    cd /home/ec2-user
-    if [ ! -d "mern-ecommerce" ]; then
-      git clone https://github.com/mohamedsamara/mern-ecommerce.git
-    fi
-      cd mern-ecommerce
-    sed -i 's/- "3000:3000"/- "80:3000"/' docker-compose.yml
-      docker compose pull
-    docker compose up -d --remove-orphans
-  EOF
+  # 2) Create a dedicated navidrome user and folder
+  useradd --system --user-group navidrome
+  mkdir -p /opt/navidrome
+  chown navidrome:navidrome /opt/navidrome
+
+  # 3) Download and install Navidrome binary (adjust version as needed)
+  NAVIDROME_VER=v0.45.2
+  cd /tmp
+  curl -Lo navidrome.tar.gz https://github.com/navidrome/navidrome/releases/download/${NAVIDROME_VER}/navidrome_linux_amd64.tar.gz
+  tar zxvf navidrome.tar.gz
+  mv navidrome /usr/local/bin/
+  chmod +x /usr/local/bin/navidrome
+
+  # 4) If CI deploy step copied navidrome.toml to /tmp, move it into place
+  if [ -f /tmp/navidrome.toml ]; then
+    mv /tmp/navidrome.toml /opt/navidrome/navidrome.toml
+    chown navidrome:navidrome /opt/navidrome/navidrome.toml
+  fi
+
+  # 5) Create a systemd service file for Navidrome
+  cat > /etc/systemd/system/navidrome.service <<-'SERVICE'
+  [Unit]
+  Description=Navidrome Music Server
+  After=network.target
+
+  [Service]
+  User=navidrome
+  Group=navidrome
+  ExecStart=/usr/local/bin/navidrome --config /opt/navidrome/navidrome.toml
+  Restart=on-failure
+  RestartSec=10
+
+  [Install]
+  WantedBy=multi-user.target
+  SERVICE
+
+  # 6) Enable & start Navidrome
+  systemctl daemon-reload
+  systemctl enable navidrome
+  systemctl start navidrome
+EOF
+
 }
 
 ################################
