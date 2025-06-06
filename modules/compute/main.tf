@@ -48,6 +48,15 @@ resource "aws_instance" "web" {
   subnet_id              = var.public_subnet
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.frontend_sg.id]
+
+  # ── 2nd EBS for /music ──
+  ebs_block_device {
+    device_name           = "/dev/xvdf" # Linux: mapped to /dev/nvme1n1 on newer AMIs
+    volume_type           = "gp2"
+    volume_size           = 100 # in GiB (adjust as needed)
+    delete_on_termination = true
+  }
+
   tags = {
     Project = var.project
     Env     = var.env
@@ -60,55 +69,63 @@ resource "aws_instance" "web" {
   }
 
   user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
+  #!/bin/bash
+  set -e
+  exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
 
-    # 1) Install curl (if it’s not already present)
-    yum update -y
-    yum install -y curl
+  # ── 1) Install curl (if missing) ──────────────────
+  yum update -y
+  yum install -y curl
 
-    # 2) Create a dedicated navidrome user and folder
-    useradd --system --user-group navidrome
-    mkdir -p /opt/navidrome
-    chown navidrome:navidrome /opt/navidrome
+  # ── 2) Create a dedicated navidrome user ──────────
+  useradd --system --user-group navidrome
 
-    # 3) Download & install the latest Navidrome (Linux/amd64) binary
-    cd /tmp
-    curl -Lo navidrome.tar.gz \
-      https://github.com/navidrome/navidrome/releases/latest/download/navidrome-linux-amd64.tar.gz
-    tar zxvf navidrome.tar.gz
-    mv navidrome /usr/local/bin/
-    chmod +x /usr/local/bin/navidrome
+  # ── 3) Ensure the MusicFolder exists ──────────────
+  mkfs -t ext4 /dev/xvdf
+  mkdir -p /music
+  mount /dev/xvdf /music
+  chown navidrome:navidrome /music
 
-    # 4) Move the config (navidrome.toml) into place if the CI deploy step dropped it in /tmp
-    if [ -f /tmp/navidrome.toml ]; then
-      mv /tmp/navidrome.toml /opt/navidrome/navidrome.toml
-      chown navidrome:navidrome /opt/navidrome/navidrome.toml
-    fi
+  # ── 4) Ensure the DataFolder exists ───────────────
+  mkdir -p /var/lib/navidrome
+  chown navidrome:navidrome /var/lib/navidrome
 
-    # 5) Create a systemd service to run Navidrome as its own user
-    cat > /etc/systemd/system/navidrome.service <<-'SERVICE'
-    [Unit]
-    Description=Navidrome Music Server
-    After=network.target
+  # ── 5) Download & install Navidrome ───────────────
+  cd /tmp
+  curl -Lo navidrome.tar.gz \
+    https://github.com/navidrome/navidrome/releases/latest/download/navidrome-linux-amd64.tar.gz
+  tar zxvf navidrome.tar.gz
+  mv navidrome /usr/local/bin/
+  chmod +x /usr/local/bin/navidrome
 
-    [Service]
-    User=navidrome
-    Group=navidrome
-    ExecStart=/usr/local/bin/navidrome --config /opt/navidrome/navidrome.toml
-    Restart=on-failure
-    RestartSec=10
+  # ── 6) Move the config into place (CI will scp it to /tmp) ──
+  if [ -f /tmp/navidrome.toml ]; then
+    mv /tmp/navidrome.toml /opt/navidrome/navidrome.toml
+    chown navidrome:navidrome /opt/navidrome/navidrome.toml
+  fi
 
-    [Install]
-    WantedBy=multi-user.target
-    SERVICE
+  # ── 7) Create systemd service ─────────────────────
+  cat > /etc/systemd/system/navidrome.service <<-'SERVICE'
+  [Unit]
+  Description=Navidrome Music Server
+  After=network.target
 
-    # 6) Enable & start Navidrome
-    systemctl daemon-reload
-    systemctl enable navidrome
-    systemctl start navidrome
-  EOF
+  [Service]
+  User=navidrome
+  Group=navidrome
+  ExecStart=/usr/local/bin/navidrome --config /opt/navidrome/navidrome.toml
+  Restart=on-failure
+  RestartSec=10
+
+  [Install]
+  WantedBy=multi-user.target
+  SERVICE
+
+  # ── 8) Enable & start Navidrome ──────────────────
+  systemctl daemon-reload
+  systemctl enable navidrome
+  systemctl start navidrome
+EOF
 
 
 }
