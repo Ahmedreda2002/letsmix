@@ -23,6 +23,10 @@ variable "frontend_public_ip" {
   description = "The EC2 instance’s public IP (so CloudFront can fetch from it)"
   type        = string
 }
+variable "frontend_ip" {
+  type        = string
+  description = "The WLZ EC2 public IPv4 address for origin."
+}
 
 variable "project" {
   description = "Project name for tagging"
@@ -81,6 +85,7 @@ locals {
 }
 
 resource "aws_route53_record" "origin_a" {
+  count   = length(trimspace(var.frontend_ip)) > 0 ? 1 : 0
   zone_id = var.zone_id
   name    = "origin.${var.domain}"
   type    = "A"

@@ -40,6 +40,7 @@ module "edge" {
   zone_id            = var.zone_id
   frontend_public_ip = module.compute.frontend_public_ip
   project            = var.project
+  frontend_ip        = module.compute.frontend_ip
   env                = var.env
 }
 

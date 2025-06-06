@@ -67,13 +67,13 @@ resource "aws_security_group" "frontend_sg" {
   name   = "${var.project}-${var.env}-frontend"
   vpc_id = data.aws_subnet.public.vpc_id
 
-ingress {
-  description = "SSH for GitLab deploy"
-  from_port   = 22
-  to_port     = 22
-  protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]
-}
+  ingress {
+    description = "SSH for GitLab deploy"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   ingress {
     description = "HTTP"
