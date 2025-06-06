@@ -7,38 +7,6 @@ provider "aws" {
 }
 
 ################################
-# 0. Variables
-################################
-variable "domain" {
-  description = "The apex domain (e.g. stage-pfe.store)"
-  type        = string
-}
-
-variable "zone_id" {
-  description = "Route 53 hosted zone ID for the domain"
-  type        = string
-}
-
-variable "frontend_public_ip" {
-  description = "The EC2 instance’s public IP (so CloudFront can fetch from it)"
-  type        = string
-}
-variable "frontend_ip" {
-  type        = string
-  description = "The WLZ EC2 public IPv4 address for origin."
-}
-
-variable "project" {
-  description = "Project name for tagging"
-  type        = string
-}
-
-variable "env" {
-  description = "Environment label (e.g. prod, stage)"
-  type        = string
-}
-
-################################
 # 1. ACM certificate (us-east-1)
 ################################
 resource "aws_acm_certificate" "cert" {
@@ -90,7 +58,7 @@ resource "aws_route53_record" "origin_a" {
   name    = "origin.${var.domain}"
   type    = "A"
   ttl     = 60
-  records = [var.frontend_public_ip]
+  records = [var.frontend_ip]
 }
 
 
