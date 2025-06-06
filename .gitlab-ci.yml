@@ -1,4 +1,5 @@
 variables:
+  GIT_STRATEGY: clone
   TF_VER: "1.8.5"
   AWS_DEFAULT_REGION: "eu-west-3"
   TF_WORKDIR: "."
