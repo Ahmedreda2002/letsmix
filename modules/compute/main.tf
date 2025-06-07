@@ -73,24 +73,21 @@ resource "aws_instance" "web" {
 set -e
 exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
 
-# ── 1) Update OS ────────────────────────────────
-yum update -y
-
-# ── 2) Create navidrome user ────────────────────
+# ── 1) Create navidrome user ─────────────────────
 useradd --system --user-group navidrome
 
-# ── 3) Format & mount EBS ───────────────────────
+# ── 2) Format & mount EBS ───────────────────────
 mkfs.ext4 /dev/nvme1n1
 mkdir -p /music
 mount /dev/nvme1n1 /music
 chown navidrome:navidrome /music
 echo '/dev/nvme1n1 /music ext4 defaults,nofail 0 2' >> /etc/fstab
 
-# ── 4) Create data folder ───────────────────────
+# ── 3) Create data folder ───────────────────────
 mkdir -p /var/lib/navidrome
 chown navidrome:navidrome /var/lib/navidrome
 
-# ── 5) Download & install Navidrome ─────────────
+# ── 4) Download & install Navidrome ─────────────
 cd /tmp
 curl -Lo navidrome.tar.gz \
   https://github.com/navidrome/navidrome/releases/latest/download/navidrome-linux-amd64.tar.gz
@@ -98,7 +95,7 @@ tar zxvf navidrome.tar.gz
 mv navidrome /usr/local/bin/
 chmod +x /usr/local/bin/navidrome
 
-# ── 6) Deploy config ────────────────────────────
+# ── 5) Deploy config ────────────────────────────
 mkdir -p /opt/navidrome
 chown navidrome:navidrome /opt/navidrome
 if [ -f /tmp/navidrome.toml ]; then
@@ -106,7 +103,7 @@ if [ -f /tmp/navidrome.toml ]; then
   chown navidrome:navidrome /opt/navidrome/navidrome.toml
 fi
 
-# ── 7) Create systemd unit ──────────────────────
+# ── 6) Create systemd unit ──────────────────────
 cat > /etc/systemd/system/navidrome.service <<-'SERVICE'
 [Unit]
 Description=Navidrome Music Server
@@ -123,11 +120,12 @@ RestartSec=10
 WantedBy=multi-user.target
 SERVICE
 
-# ── 8) Enable & start Navidrome ─────────────────
+# ── 7) Enable & start Navidrome ─────────────────
 systemctl daemon-reload
 systemctl enable navidrome
 systemctl start navidrome
 EOF
+
 }
 
 ################################
