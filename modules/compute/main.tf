@@ -73,26 +73,25 @@ resource "aws_instance" "web" {
     set -e
     exec > >(tee /var/log/user-data.log | logger -t user-data) 2>&1
 
-    # ── 1) Install curl (if missing) ──────────────────
+    # ── 1) Update and ensure curl is available ───────
     yum update -y
-    yum install -y curl
++   # curl comes preinstalled on Amazon Linux 2023; no need to install
 
-    # ── 2) Create a dedicated navidrome user ──────────
+    # ── 2) Create navidrome user ─────────────────────
     useradd --system --user-group navidrome
 
-    # ── 3) Format & mount the EBS (nvme1n1) ──────────
+    # ── 3) Format & mount the EBS (nvme1n1) ─────────
     mkfs.ext4 /dev/nvme1n1
     mkdir -p /music
     mount /dev/nvme1n1 /music
     chown navidrome:navidrome /music
-    # Persist mount across reboots:
     echo '/dev/nvme1n1 /music ext4 defaults,nofail 0 2' >> /etc/fstab
 
-    # ── 4) Ensure the DataFolder exists ───────────────
+    # ── 4) Data folder ───────────────────────────────
     mkdir -p /var/lib/navidrome
     chown navidrome:navidrome /var/lib/navidrome
 
-    # ── 5) Download & install Navidrome ───────────────
+    # ── 5) Download & install Navidrome ─────────────
     cd /tmp
     curl -Lo navidrome.tar.gz \
       https://github.com/navidrome/navidrome/releases/latest/download/navidrome-linux-amd64.tar.gz
@@ -100,7 +99,7 @@ resource "aws_instance" "web" {
     mv navidrome /usr/local/bin/
     chmod +x /usr/local/bin/navidrome
 
-    # ── 6) Create config directory & move the config into place ──
+    # ── 6) Place config ──────────────────────────────
     mkdir -p /opt/navidrome
     chown navidrome:navidrome /opt/navidrome
     if [ -f /tmp/navidrome.toml ]; then
@@ -108,7 +107,7 @@ resource "aws_instance" "web" {
       chown navidrome:navidrome /opt/navidrome/navidrome.toml
     fi
 
-    # ── 7) Create systemd service ─────────────────────
+    # ── 7) Systemd service ───────────────────────────
     cat > /etc/systemd/system/navidrome.service <<-'SERVICE'
     [Unit]
     Description=Navidrome Music Server
@@ -125,7 +124,7 @@ resource "aws_instance" "web" {
     WantedBy=multi-user.target
     SERVICE
 
-    # ── 8) Enable & start Navidrome ──────────────────
+    # ── 8) Enable & start ────────────────────────────
     systemctl daemon-reload
     systemctl enable navidrome
     systemctl start navidrome
