@@ -60,7 +60,7 @@ apply:
     - jq -r 'to_entries | map("TFOUT_\(.key|ascii_upcase)=\(.value.value)") | .[]' tf.json > tf.env
   artifacts:
     reports: { dotenv: tf.env }
-  when: manual
+  
 
 ############################
 # 3. Deploy Navidrome (manual)
@@ -79,7 +79,7 @@ deploy:
       scp -i id_rsa app/navidrome.toml ec2-user@$TFOUT_FRONTEND_PUBLIC_IP:/tmp/
       ssh -i id_rsa ec2-user@$TFOUT_FRONTEND_PUBLIC_IP "sudo mv /tmp/navidrome.toml /opt/navidrome/ && sudo chown navidrome:navidrome /opt/navidrome/navidrome.toml && sudo systemctl restart navidrome"
     fi
-  when: manual
+  
 
 ############################
 # 4. Destroy (manual)
