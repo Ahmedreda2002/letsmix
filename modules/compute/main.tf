@@ -69,39 +69,8 @@ resource "aws_instance" "web" {
   }
 
   user_data = <<EOF
-#cloud-config
-package_update: false
-runcmd:
-  - useradd --system --user-group navidrome
-  - mkfs.ext4 /dev/nvme1n1
-  - mkdir -p /music
-  - mount /dev/nvme1n1 /music
-  - chown navidrome:navidrome /music
-  - sh -c "echo '/dev/nvme1n1 /music ext4 defaults,nofail 0 2' >> /etc/fstab"
-  - mkdir -p /var/lib/navidrome
-  - chown navidrome:navidrome /var/lib/navidrome
-  - sh -c "cd /tmp && curl -Lo navidrome.tar.gz https://github.com/navidrome/navidrome/releases/latest/download/navidrome-linux-amd64.tar.gz && tar zxvf navidrome.tar.gz && mv navidrome /usr/local/bin/ && chmod +x /usr/local/bin/navidrome"
-  - mkdir -p /opt/navidrome
-  - chown navidrome:navidrome /opt/navidrome
-  - sh -c "if [ -f /tmp/navidrome.toml ]; then mv /tmp/navidrome.toml /opt/navidrome/navidrome.toml && chown navidrome:navidrome /opt/navidrome/navidrome.toml; fi"
-  - sh -c "cat >/etc/systemd/system/navidrome.service << 'SERVICE'
-[Unit]
-Description=Navidrome Music Server
-After=network.target
-
-[Service]
-User=navidrome
-Group=navidrome
-ExecStart=/usr/local/bin/navidrome --config /opt/navidrome/navidrome.toml
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-SERVICE"
-  - systemctl daemon-reload
-  - systemctl enable navidrome
-  - systemctl start navidrome
+#!/bin/bash
+echo "userdata OK" > /tmp/userdata_test.txt
 EOF
 
 }
