@@ -1,8 +1,11 @@
 variables:
   GIT_STRATEGY: clone
+  GIT_DEPTH:    1 
   TF_VER: "1.8.5"
   AWS_DEFAULT_REGION: "eu-west-3"
   TF_WORKDIR: "."
+  
+         # shallow clone
   # remember: TF_STATE_BUCKET, TF_STATE_DDB_TABLE, ZONE_ID, SSH_KEY must exist
 
 stages:
